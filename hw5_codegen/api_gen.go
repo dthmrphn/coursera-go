@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func (srv *MyApi) handleProfile(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+func (srv *MyApi) handleProfile(w http.ResponseWriter, r *http.Request) (interface{}, error) {
 	params := url.Values{}
 	if r.Method == "GET" {
 		params = r.URL.Query()
@@ -21,29 +21,13 @@ func (srv *MyApi) handleProfile(w http.ResponseWriter, r *http.Request) ([]byte,
 
 	rvProfileParams, err := NewProfileParams(params)
 	if err != nil {
-		return nil, ApiError{http.StatusBadRequest, fmt.Errorf("bad method")}
-	}
-
-	rvUser, err := srv.Profile(r.Context(), rvProfileParams)
-	if err != nil {
 		return nil, err
 	}
 
-	response := struct {
-		Json *User `json:"response"`
-	}{}
-
-	response.Json = rvUser
-
-	rv, err := json.Marshal(response)
-	if err != nil {
-		return nil, ApiError{http.StatusInternalServerError, fmt.Errorf("internal error")}
-	}
-
-	return rv, nil
+	return srv.Profile(r.Context(), rvProfileParams)
 }
 
-func (srv *MyApi) handleCreate(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+func (srv *MyApi) handleCreate(w http.ResponseWriter, r *http.Request) (interface{}, error) {
 	if r.Header.Get("X-Auth") != "100500" {
 		return nil, ApiError{http.StatusForbidden, fmt.Errorf("unauthorized")}
 	}
@@ -60,29 +44,13 @@ func (srv *MyApi) handleCreate(w http.ResponseWriter, r *http.Request) ([]byte, 
 
 	rvCreateParams, err := NewCreateParams(params)
 	if err != nil {
-		return nil, ApiError{http.StatusBadRequest, fmt.Errorf("bad method")}
-	}
-
-	rvNewUser, err := srv.Create(r.Context(), rvCreateParams)
-	if err != nil {
 		return nil, err
 	}
 
-	response := struct {
-		Json *NewUser `json:"response"`
-	}{}
-
-	response.Json = rvNewUser
-
-	rv, err := json.Marshal(response)
-	if err != nil {
-		return nil, ApiError{http.StatusInternalServerError, fmt.Errorf("internal error")}
-	}
-
-	return rv, nil
+	return srv.Create(r.Context(), rvCreateParams)
 }
 
-func (srv *OtherApi) handleCreate(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+func (srv *OtherApi) handleCreate(w http.ResponseWriter, r *http.Request) (interface{}, error) {
 	if r.Header.Get("X-Auth") != "100500" {
 		return nil, ApiError{http.StatusForbidden, fmt.Errorf("unauthorized")}
 	}
@@ -99,92 +67,84 @@ func (srv *OtherApi) handleCreate(w http.ResponseWriter, r *http.Request) ([]byt
 
 	rvOtherCreateParams, err := NewOtherCreateParams(params)
 	if err != nil {
-		return nil, ApiError{http.StatusBadRequest, fmt.Errorf("bad method")}
-	}
-
-	rvOtherUser, err := srv.Create(r.Context(), rvOtherCreateParams)
-	if err != nil {
 		return nil, err
 	}
 
-	response := struct {
-		Json *OtherUser `json:"response"`
-	}{}
-
-	response.Json = rvOtherUser
-
-	rv, err := json.Marshal(response)
-	if err != nil {
-		return nil, ApiError{http.StatusInternalServerError, fmt.Errorf("internal error")}
-	}
-
-	return rv, nil
+	return srv.Create(r.Context(), rvOtherCreateParams)
 }
 
 func (srv *MyApi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var data []byte
+	var out interface{}
 	var err error
+	var status int
 
 	switch r.URL.Path {
 	case "/user/profile":
-		data, err = srv.handleProfile(w, r)
+		out, err = srv.handleProfile(w, r)
 	case "/user/create":
-		data, err = srv.handleCreate(w, r)
+		out, err = srv.handleCreate(w, r)
 	default:
-		err = ApiError{http.StatusNotFound, fmt.Errorf("unknow method")}
+		err = ApiError{http.StatusNotFound, fmt.Errorf("unknown method")}
 	}
 
-	status := http.StatusOK
+	response := struct {
+		Err string      `json:"error"`
+		Res interface{} `json:"response,omitempty"`
+	}{}
 
 	if err != nil {
-		rv := struct {
-			Err string `json:"error"`
-		}{}
-
 		if api, ok := err.(ApiError); ok {
+			response.Err = api.Error()
 			status = api.HTTPStatus
-			rv.Err = api.Error()
-			data, err = json.Marshal(rv)
 		} else {
+			response.Err = err.Error()
 			status = http.StatusInternalServerError
 		}
+	} else {
+		response.Res = out
+		status = http.StatusOK
 	}
 
+	js, _ := json.Marshal(response)
 	w.WriteHeader(status)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	w.Write(js)
 }
 
 func (srv *OtherApi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var data []byte
+	var out interface{}
 	var err error
+	var status int
 
 	switch r.URL.Path {
 	case "/user/create":
-		data, err = srv.handleCreate(w, r)
+		out, err = srv.handleCreate(w, r)
 	default:
-		err = ApiError{http.StatusNotFound, fmt.Errorf("unknow method")}
+		err = ApiError{http.StatusNotFound, fmt.Errorf("unknown method")}
 	}
 
-	status := http.StatusOK
+	response := struct {
+		Err string      `json:"error"`
+		Res interface{} `json:"response,omitempty"`
+	}{}
 
 	if err != nil {
-		rv := struct {
-			Err string `json:"error"`
-		}{}
-
 		if api, ok := err.(ApiError); ok {
+			response.Err = api.Error()
 			status = api.HTTPStatus
-			rv.Err = api.Error()
-			data, err = json.Marshal(rv)
 		} else {
+			response.Err = err.Error()
 			status = http.StatusInternalServerError
 		}
+	} else {
+		response.Res = out
+		status = http.StatusOK
 	}
 
+	js, _ := json.Marshal(response)
 	w.WriteHeader(status)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	w.Write(js)
 }
 
 func NewCreateParams(values url.Values) (CreateParams, error) {
@@ -194,6 +154,9 @@ func NewCreateParams(values url.Values) (CreateParams, error) {
 	rv.Login = values.Get("login")
 	if rv.Login == "" {
 		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("login must me not empty")}
+	}
+	if len(rv.Login) < 10 {
+		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("login len must be >= 10")}
 	}
 
 	rv.Name = values.Get("full_name")
@@ -211,12 +174,18 @@ func NewCreateParams(values url.Values) (CreateParams, error) {
 		}
 	}
 	if !enumStatusValid {
-		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("Status be one of [%s]", strings.Join(enumStatus, ","))}
+		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("status must be one of [%s]", strings.Join(enumStatus, ", "))}
 	}
 
 	rv.Age, err = strconv.Atoi(values.Get("age"))
 	if err != nil {
 		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("age must be int")}
+	}
+	if rv.Age > 128 {
+		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("age must be <= 128")}
+	}
+	if rv.Age < 0 {
+		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("age must be >= 0")}
 	}
 
 	return rv, err
@@ -229,6 +198,9 @@ func NewOtherCreateParams(values url.Values) (OtherCreateParams, error) {
 	rv.Username = values.Get("username")
 	if rv.Username == "" {
 		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("username must me not empty")}
+	}
+	if len(rv.Username) < 3 {
+		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("username len must be >= 3")}
 	}
 
 	rv.Name = values.Get("account_name")
@@ -246,12 +218,18 @@ func NewOtherCreateParams(values url.Values) (OtherCreateParams, error) {
 		}
 	}
 	if !enumClassValid {
-		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("Class be one of [%s]", strings.Join(enumClass, ","))}
+		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("class must be one of [%s]", strings.Join(enumClass, ", "))}
 	}
 
 	rv.Level, err = strconv.Atoi(values.Get("level"))
 	if err != nil {
 		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("level must be int")}
+	}
+	if rv.Level > 50 {
+		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("level must be <= 50")}
+	}
+	if rv.Level < 1 {
+		return rv, ApiError{http.StatusBadRequest, fmt.Errorf("level must be >= 1")}
 	}
 
 	return rv, err

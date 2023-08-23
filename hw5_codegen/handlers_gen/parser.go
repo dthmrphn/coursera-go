@@ -19,9 +19,6 @@ const (
 	fieldEnum      = "enum"
 )
 
-type Methods map[string][]MethodTemplate
-type Params map[string][]StructField
-
 type Parser struct {
 	generator string
 	validator string
@@ -44,8 +41,8 @@ func NewParser(path, generator, validator string) (Parser, error) {
 	return p, nil
 }
 
-func codegen(pref string, api string) (string, bool) {
-	return strings.TrimPrefix(api, pref), strings.HasPrefix(api, pref)
+func codegen(tag, pref string) (string, bool) {
+	return strings.TrimPrefix(tag, pref), strings.HasPrefix(tag, pref)
 }
 
 func functionRecv(fd *ast.FuncDecl) (string, error) {
@@ -106,7 +103,7 @@ func (p *Parser) ParseMethods() (Methods, error) {
 			continue
 		}
 
-		cg, ok := codegen(p.generator+":api", fd.Doc.Text())
+		cg, ok := codegen(fd.Doc.Text(), p.generator+":api")
 		if !ok {
 			continue
 		}
@@ -157,10 +154,6 @@ func methodsParams(methods Methods) Params {
 	return ps
 }
 
-func validate(tag, validator string) (string, bool) {
-	return strings.TrimPrefix(tag, validator), strings.HasPrefix(tag, validator)
-}
-
 func structField(field *ast.Field, tags string) (StructField, error) {
 	sf := StructField{}
 
@@ -189,7 +182,7 @@ func structField(field *ast.Field, tags string) (StructField, error) {
 			if err != nil {
 				return sf, err
 			}
-
+			sf.Min = true
 			sf.MinValue = v
 		}
 
@@ -203,7 +196,7 @@ func structField(field *ast.Field, tags string) (StructField, error) {
 			if err != nil {
 				return sf, err
 			}
-
+			sf.Max = true
 			sf.MaxValue = v
 		}
 
@@ -255,7 +248,7 @@ func (p Parser) ParseParams(methods Methods) (Params, error) {
 		}
 
 		for _, field := range st.Fields.List {
-			tags, ok := validate(field.Tag.Value, "`"+p.validator+":")
+			tags, ok := codegen(field.Tag.Value, "`"+p.validator+":")
 			if !ok {
 				continue
 			}
