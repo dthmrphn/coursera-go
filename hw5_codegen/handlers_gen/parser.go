@@ -4,23 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
-	"go/format"
 	"go/parser"
 	"go/token"
+	"strconv"
 	"strings"
 )
 
-type Methods map[string][]MethodTemplate
-type Structs map[string]StructTemplate
+const (
+	fieldRequired  = "required"
+	fieldDefault   = "default"
+	fieldParamName = "paramname"
+	fieldMinValue  = "min"
+	fieldMaxValue  = "max"
+	fieldEnum      = "enum"
+)
 
-type StructFields struct {
-	Min      bool
-	MinValue int
-	Max      bool
-	MaxValue int
-	Enum     bool
-	Enums    []string
-}
+type Methods map[string][]MethodTemplate
+type Params map[string][]StructField
 
 type Parser struct {
 	generator string
@@ -97,8 +97,8 @@ func functionRets(fd *ast.FuncDecl) []string {
 	return rets
 }
 
-func (p Parser) ParseMethods() (Methods, error) {
-	ms := map[string][]MethodTemplate{}
+func (p *Parser) ParseMethods() (Methods, error) {
+	ms := Methods{}
 
 	for _, decl := range p.file.Decls {
 		fd, ok := decl.(*ast.FuncDecl)
@@ -132,8 +132,8 @@ func (p Parser) ParseMethods() (Methods, error) {
 
 		m := MethodTemplate{
 			Name:   fd.Name.String(),
-			Args:   strings.Join(args, ", "),
-			Return: strings.Join(rets, ", "),
+			Param:  args[0],
+			Return: rets[0],
 			Auth:   api.Auth,
 			URL:    api.Url,
 			Method: api.Method,
@@ -145,31 +145,93 @@ func (p Parser) ParseMethods() (Methods, error) {
 	return ms, nil
 }
 
+func methodsParams(methods Methods) Params {
+	ps := Params{}
+
+	for _, ms := range methods {
+		for _, m := range ms {
+			ps[m.Param] = []StructField{}
+		}
+	}
+
+	return ps
+}
+
 func validate(tag, validator string) (string, bool) {
 	return strings.TrimPrefix(tag, validator), strings.HasPrefix(tag, validator)
 }
 
-func structFields(st *ast.StructType, validator string) ([]StructFields, error) {
-	fields := make([]StructFields, 0)
+func structField(field *ast.Field, tags string) (StructField, error) {
+	sf := StructField{}
 
-	for _, field := range st.Fields.List {
-		if field.Tag == nil {
-			continue
+	for _, tag := range strings.Split(tags, ",") {
+		tag = strings.Trim(tag, "\",`")
+		if strings.HasPrefix(tag, fieldRequired) {
+			sf.Required = true
 		}
 
-		tag, ok := validate(field.Tag.Value, validator+":")
-		if !ok {
-			continue
+		if strings.HasPrefix(tag, fieldDefault) {
+			s := strings.Split(tag, "=")
+			if len(s) != 2 {
+				return sf, fmt.Errorf("default without value")
+			}
+
+			sf.Default = s[1]
 		}
 
-		// parse fields
+		if strings.HasPrefix(tag, fieldMinValue) {
+			s := strings.Split(tag, "=")
+			if len(s) != 2 {
+				return sf, fmt.Errorf("min without value")
+			}
+
+			v, err := strconv.Atoi(s[1])
+			if err != nil {
+				return sf, err
+			}
+
+			sf.MinValue = v
+		}
+
+		if strings.HasPrefix(tag, fieldMaxValue) {
+			s := strings.Split(tag, "=")
+			if len(s) != 2 {
+				return sf, fmt.Errorf("max without value")
+			}
+
+			v, err := strconv.Atoi(s[1])
+			if err != nil {
+				return sf, err
+			}
+
+			sf.MaxValue = v
+		}
+
+		if strings.HasPrefix(tag, fieldEnum) {
+			s := strings.Split(tag, "=")
+			if len(s) != 2 {
+				return sf, fmt.Errorf("enum without value")
+			}
+
+			sf.Enum = true
+			sf.Enums = strings.Split(s[1], "|")
+		}
+
+		if strings.HasPrefix(tag, fieldParamName) {
+			sf.ParamValue = strings.Split(tag, "=")[1]
+		} else {
+			sf.ParamValue = strings.ToLower(field.Names[0].Name)
+		}
 	}
 
-	return fields, nil
+	sf.ParamName = field.Names[0].Name
+	sf.ParamType = field.Type.(*ast.Ident).Name
+
+	return sf, nil
 }
 
-func (p Parser) ParseStructs(names ...string) (Structs, error) {
-	ss := Structs{}
+func (p Parser) ParseParams(methods Methods) (Params, error) {
+	ps := methodsParams(methods)
 
 	for _, decl := range p.file.Decls {
 		gd, ok := decl.(*ast.GenDecl)
@@ -187,10 +249,25 @@ func (p Parser) ParseStructs(names ...string) (Structs, error) {
 			continue
 		}
 
-		if !strings.Contains(strings.Join(names, ""), ts.Name.Name) {
+		_, ok = ps[ts.Name.Name]
+		if !ok {
 			continue
+		}
+
+		for _, field := range st.Fields.List {
+			tags, ok := validate(field.Tag.Value, "`"+p.validator+":")
+			if !ok {
+				continue
+			}
+
+			sf, err := structField(field, tags)
+			if err != nil {
+				return ps, err
+			}
+
+			ps[ts.Name.Name] = append(ps[ts.Name.Name], sf)
 		}
 	}
 
-	return ss, nil
+	return ps, nil
 }
