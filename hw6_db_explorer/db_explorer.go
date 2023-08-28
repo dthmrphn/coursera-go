@@ -5,115 +5,213 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 type DbExplorer struct {
 	r  *Router
+	v  *Validator
 	db *sql.DB
-
-	tables []Table
 }
 
-type DbResponse struct {
-	Error string      `json:"error,omitempty"`
-	Data  interface{} `json:"response,omitempty"`
-}
-
-type Column struct{}
-
-type Table struct {
-	Name string
-	Key  string
-	Cols []Column
-}
-
-func getTables(db *sql.DB) ([]Table, error) {
-	rows, err := db.Query("SHOW TABLES")
+func NewDbExplorer(db *sql.DB) (*DbExplorer, error) {
+	v, err := NewValidator(db)
 	if err != nil {
 		return nil, err
 	}
 
-	rv := make([]Table, 0)
+	r := NewRouter()
 
-	for rows.Next() {
-		t := Table{}
-		err := rows.Scan(&t.Name)
-		if err != nil {
-			return nil, err
-		}
-		rv = append(rv, t)
+	e := &DbExplorer{r, v, db}
+
+	r.Route("GET", "/", e.tablesList)
+	r.Route("GET", "/$table", e.recordsList)
+	r.Route("GET", "/$table/$id", e.recordInfo)
+	r.Route("PUT", "/$table", e.recordCreate)
+	r.Route("POST", "/$table/$id", e.recordUpdate)
+	r.Route("DELETE", "/$table/$id", e.recordDelete)
+
+	return e, nil
+}
+
+func JSONParams(r *http.Request) (map[string]interface{}, error) {
+	rv := map[string]interface{}{}
+	err := json.NewDecoder(r.Body).Decode(&rv)
+	if err != nil {
+		return nil, err
 	}
 
 	return rv, nil
 }
 
-func getColumns(db *sql.DB, name string) ([]Column, error) {
-	cols, err := db.Query("SHOW COLUMNS FROM " + name)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	for cols.Next() {
-		Field := ""
-		Type := ""
-		Null := ""
-		Key := ""
-		Default := ""
-		Extra := ""
-
-		cols.Scan(&Field, &Type, &Null, &Key, &Default, &Extra)
-		fmt.Println(Field, Type, Null, Key, Default, Extra)
-	}
-
-	return nil, nil
-}
-
-func NewDbExplorer(db *sql.DB) (*DbExplorer, error) {
-	e := &DbExplorer{r: NewRouter(), db: db}
-
-	tables, err := getTables(db)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, t := range tables {
-		getColumns(db, t.Name)
-	}
-
-	e.tables = tables
-
-	e.r.Route("GET", "/", e.handleGetTables)
-	e.r.Route("GET", "/$table", e.handleGetRecords)
-	e.r.Route("GET", "/$table/$id", e.handlePostRecord)
-
-	return e, nil
-}
-
-func (e *DbExplorer) handleGetTables(w http.ResponseWriter, r *http.Request) {
-	rv := struct {
-		Tables []string `json:"tables"`
-	}{}
-
-	rv.Tables = make([]string, len(e.tables))
-	for i, t := range e.tables {
-		rv.Tables[i] = t.Name
-	}
-
-	resp := DbResponse{Data: rv}
+func writeResponse(w http.ResponseWriter, status int, data any, err string) {
+	resp := struct {
+		Error string      `json:"error,omitempty"`
+		Data  interface{} `json:"response,omitempty"`
+	}{err, data}
 
 	js, _ := json.Marshal(resp)
-
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(status)
 	w.Header().Add("Content-Type", "application/json")
 	w.Write(js)
 }
 
-func (e *DbExplorer) handleGetRecord(w http.ResponseWriter, r *http.Request)  {}
-func (e *DbExplorer) handleGetRecords(w http.ResponseWriter, r *http.Request) {}
-func (e *DbExplorer) handlePutRecord(w http.ResponseWriter, r *http.Request)  {}
-func (e *DbExplorer) handlePostRecord(w http.ResponseWriter, r *http.Request) {}
-func (e *DbExplorer) handleDelRecord(w http.ResponseWriter, r *http.Request)  {}
+func (e *DbExplorer) tablesList(w http.ResponseWriter, r *http.Request) {
+	tables := []string{}
+
+	for t := range e.v.tables {
+		tables = append(tables, t)
+	}
+
+	data := map[string][]string{"tables": tables}
+	writeResponse(w, http.StatusOK, data, "")
+}
+
+func (e *DbExplorer) recordsList(w http.ResponseWriter, r *http.Request) {
+	tname := RouteParam(r, "table")
+	table, ok := e.v.tables[tname]
+	if !ok {
+		writeResponse(w, http.StatusNotFound, nil, "unknown table")
+		return
+	}
+
+	limit, err := strconv.Atoi(URLParam(r, "limit"))
+	if err != nil {
+		limit = 5
+	}
+
+	offset, err := strconv.Atoi(URLParam(r, "offset"))
+	if err != nil {
+		offset = 0
+	}
+
+	rows, err := e.db.Query("SELECT * FROM "+tname+" LIMIT ? OFFSET ?", limit, offset)
+	if err != nil {
+		writeResponse(w, http.StatusInternalServerError, nil, "")
+		return
+	}
+	defer rows.Close()
+
+	records := []interface{}{}
+	for rows.Next() {
+		row := table.NewRow()
+		err := rows.Scan(row...)
+		if err != nil {
+			writeResponse(w, http.StatusInternalServerError, nil, "")
+			return
+		}
+
+		record := map[string]interface{}{}
+		for i, c := range table.cols {
+			record[c.Name()] = row[i]
+		}
+
+		records = append(records, record)
+	}
+
+	data := map[string]interface{}{"records": records}
+	writeResponse(w, http.StatusOK, data, "")
+}
+
+func (e *DbExplorer) recordInfo(w http.ResponseWriter, r *http.Request) {
+	tname := RouteParam(r, "table")
+	table, ok := e.v.tables[tname]
+	if !ok {
+		writeResponse(w, http.StatusNotFound, nil, "unknown table")
+		return
+	}
+
+	id, err := strconv.Atoi(RouteParam(r, "id"))
+	if err != nil {
+		writeResponse(w, http.StatusNotFound, nil, "bad id param")
+		return
+	}
+
+	rows, err := e.db.Query("SELECT * FROM "+tname+" WHERE "+table.key+" = ?", id)
+	if err != nil {
+		fmt.Println(err)
+		writeResponse(w, http.StatusInternalServerError, nil, "")
+		return
+	}
+	defer rows.Close()
+
+	record := map[string]interface{}{}
+	for rows.Next() {
+		row := table.NewRow()
+		err := rows.Scan(row...)
+		if err != nil {
+			writeResponse(w, http.StatusInternalServerError, nil, "")
+			return
+		}
+
+		for i, c := range table.cols {
+			record[c.Name()] = row[i]
+		}
+	}
+
+	if len(record) == 0 {
+		writeResponse(w, http.StatusNotFound, nil, "record not found")
+		return
+	}
+
+	data := map[string]interface{}{"record": record}
+	writeResponse(w, http.StatusOK, data, "")
+}
+
+func (e *DbExplorer) recordCreate(w http.ResponseWriter, r *http.Request) {
+	tname := RouteParam(r, "table")
+	table, ok := e.v.tables[tname]
+	if !ok {
+		writeResponse(w, http.StatusNotFound, nil, "unknown table")
+		return
+	}
+
+	params, err := JSONParams(r)
+	if err != nil {
+		writeResponse(w, http.StatusBadRequest, nil, err.Error())
+		return
+	}
+
+	vals := []interface{}{}
+	cols := []string{}
+	for _, c := range table.cols {
+		if c.Name() == table.key {
+			continue
+		}
+
+		if param, ok := params[c.Name()]; ok {
+			if !c.Equal(param) {
+				writeResponse(w, http.StatusBadRequest, nil, fmt.Sprintf("field %s have invalid type", c.Name()))
+				return
+			}
+			vals = append(vals, param)
+		} else {
+			vals = append(vals, c.Type())
+		}
+
+		cols = append(cols, c.Name())
+	}
+
+	q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tname, strings.Join(cols, ", "), strings.Join(strings.Split(strings.Repeat("?", len(cols)), ""), ", "))
+	res, err := e.db.Exec(q, vals...)
+	if err != nil {
+		writeResponse(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+	
+	id, err := res.LastInsertId()
+	if err != nil {
+		writeResponse(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+
+	data := map[string]interface{}{table.key: id}
+	writeResponse(w, http.StatusOK, data, "")
+}
+
+func (e *DbExplorer) recordUpdate(w http.ResponseWriter, r *http.Request) {}
+func (e *DbExplorer) recordDelete(w http.ResponseWriter, r *http.Request) {}
 
 func (e *DbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.r.Serve(w, r)
