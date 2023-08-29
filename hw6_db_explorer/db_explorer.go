@@ -28,7 +28,7 @@ func NewDbExplorer(db *sql.DB) (*DbExplorer, error) {
 	r.Route("GET", "/", e.tablesList)
 	r.Route("GET", "/$table", e.recordsList)
 	r.Route("GET", "/$table/$id", e.recordInfo)
-	r.Route("PUT", "/$table", e.recordCreate)
+	r.Route("PUT", "/$table/", e.recordCreate)
 	r.Route("POST", "/$table/$id", e.recordUpdate)
 	r.Route("DELETE", "/$table/$id", e.recordDelete)
 
@@ -173,14 +173,14 @@ func (e *DbExplorer) recordCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vals := []interface{}{}
-	cols := []string{}
+	vals := make([]interface{}, 0, len(params))
+	cols := make([]string, 0, len(params))
+	plhd := make([]string, 0, len(params))
 	for _, c := range table.cols {
-		if c.Name() == table.key {
-			continue
-		}
-
 		if param, ok := params[c.Name()]; ok {
+			if c.Name() == table.key {
+				continue
+			}
 			if !c.Equal(param) {
 				writeResponse(w, http.StatusBadRequest, nil, fmt.Sprintf("field %s have invalid type", c.Name()))
 				return
@@ -191,27 +191,101 @@ func (e *DbExplorer) recordCreate(w http.ResponseWriter, r *http.Request) {
 		}
 
 		cols = append(cols, c.Name())
+		plhd = append(plhd, "?")
 	}
 
-	q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tname, strings.Join(cols, ", "), strings.Join(strings.Split(strings.Repeat("?", len(cols)), ""), ", "))
+	q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tname, strings.Join(cols, ", "), strings.Join(plhd, ", "))
 	res, err := e.db.Exec(q, vals...)
 	if err != nil {
 		writeResponse(w, http.StatusInternalServerError, nil, err.Error())
 		return
 	}
-	
+
 	id, err := res.LastInsertId()
 	if err != nil {
 		writeResponse(w, http.StatusInternalServerError, nil, err.Error())
 		return
 	}
 
-	data := map[string]interface{}{table.key: id}
+	data := map[string]int64{table.key: id}
 	writeResponse(w, http.StatusOK, data, "")
 }
 
-func (e *DbExplorer) recordUpdate(w http.ResponseWriter, r *http.Request) {}
-func (e *DbExplorer) recordDelete(w http.ResponseWriter, r *http.Request) {}
+func (e *DbExplorer) recordUpdate(w http.ResponseWriter, r *http.Request) {
+	tname := RouteParam(r, "table")
+	id := RouteParam(r, "id")
+	table, ok := e.v.tables[tname]
+	if !ok {
+		writeResponse(w, http.StatusNotFound, nil, "unknown table")
+		return
+	}
+
+	params, err := JSONParams(r)
+	if err != nil {
+		writeResponse(w, http.StatusBadRequest, nil, err.Error())
+		return
+	}
+
+	vals := make([]interface{}, 0, len(params))
+	cols := make([]string, 0, len(params))
+	for _, c := range table.cols {
+		if param, ok := params[c.Name()]; ok {
+			if c.Name() == table.key {
+				writeResponse(w, http.StatusBadRequest, nil, fmt.Sprintf("field %s have invalid type", c.Name()))
+				return
+			}
+			if !c.Equal(param) {
+				writeResponse(w, http.StatusBadRequest, nil, fmt.Sprintf("field %s have invalid type", c.Name()))
+				return
+			}
+			vals = append(vals, param)
+			cols = append(cols, fmt.Sprintf("%s = ?", c.Name()))
+		}
+	}
+
+	q := fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s", tname, strings.Join(cols, ", "), table.key, id)
+	res, err := e.db.Exec(q, vals...)
+	if err != nil {
+		writeResponse(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+
+	row, err := res.RowsAffected()
+	if err != nil {
+		writeResponse(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+
+	data := map[string]int64{"updated": row}
+	writeResponse(w, http.StatusOK, data, "")
+}
+
+func (e *DbExplorer) recordDelete(w http.ResponseWriter, r *http.Request) {
+	tname := RouteParam(r, "table")
+	id := RouteParam(r, "id")
+	table, ok := e.v.tables[tname]
+	if !ok {
+		writeResponse(w, http.StatusNotFound, nil, "unknown table")
+		return
+	}
+
+	q := fmt.Sprintf("DELETE FROM %s WHERE %s = ?", tname, table.key)
+	res, err := e.db.Exec(q, id)
+	if err != nil {
+		writeResponse(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+
+	del, err := res.RowsAffected()
+	if err != nil {
+		writeResponse(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+
+	data := map[string]int64{"deleted": del}
+	writeResponse(w, http.StatusOK, data, "")
+
+}
 
 func (e *DbExplorer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.r.Serve(w, r)

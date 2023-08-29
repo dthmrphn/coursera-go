@@ -22,8 +22,8 @@ func (c *columnInt) Name() string {
 }
 
 func (c *columnInt) Equal(val interface{}) bool {
-	if c.null {
-		return val == nil
+	if val == nil {
+		return c.null
 	}
 
 	_, ok := val.(int)
@@ -48,8 +48,8 @@ func (c *columnString) Name() string {
 }
 
 func (c *columnString) Equal(val interface{}) bool {
-	if c.null {
-		return val == nil
+	if val == nil {
+		return c.null
 	}
 
 	_, ok := val.(string)
@@ -100,21 +100,6 @@ func NewValidator(db *sql.DB) (*Validator, error) {
 	}
 
 	return &Validator{tables}, nil
-}
-
-func (v *Validator) Validate(table, col string, val interface{}) bool {
-	t, ok := v.tables[table]
-	if !ok {
-		return false
-	}
-
-	for _, c := range t.cols {
-		if c.Name() == col {
-			return c.Equal(val)
-		}
-	}
-
-	return false
 }
 
 func getTablesNames(db *sql.DB) ([]string, error) {
