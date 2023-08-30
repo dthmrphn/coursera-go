@@ -1,7 +1,7 @@
 package main
 
 import (
-	"coursera/hw3_bench/fast"
+	"coursera-go/hw3_bench/fast"
 	"io"
 	"os"
 )
@@ -25,4 +25,3 @@ func FastSearchEasyJson(out io.Writer) {
 
 	fast.EasyJson(out, data)
 }
-

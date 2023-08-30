@@ -17,3 +17,6 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.21'
+
+    - name: Test hw3
+      run:  go test -v ./hw3_bench
