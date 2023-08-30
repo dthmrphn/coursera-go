@@ -10,8 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 var (
@@ -55,13 +53,13 @@ type server struct {
 func NewServer(token, fp string) (*server, error) {
 	data, err := os.ReadFile(fp)
 	if err != nil {
-		return nil, errors.Wrap(err, fp)
+		return nil, err
 	}
 
 	root := &root{}
 	err = xml.Unmarshal(data, root)
 	if err != nil {
-		return nil, errors.Wrap(err, fp)
+		return nil, err
 	}
 
 	users := make([]User, len(root.Rows))
