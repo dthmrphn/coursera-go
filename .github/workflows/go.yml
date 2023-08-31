@@ -14,7 +14,7 @@ jobs:
     env:
       DB_NAME: golang
       DB_USER: root
-      DB_PASSWORD: 1234
+      DB_PASSWORD: root
       DB_DSN: $DB_USER:$DB_PASSWORD@/$DB_NAME
 
     steps:
@@ -24,7 +24,7 @@ jobs:
       run : |
           sudo /etc/init.d/mysql start
           mysql -v
-          mysql -h 127.0.0.1 -e 'CREATE DATABASE ${{ env.DB_NAME }};' -u ${{ env.DB_USER }} 
+          mysql -h 127.0.0.1 -e 'CREATE DATABASE ${{ env.DB_NAME }};' -u ${{ env.DB_USER }} -p ${{ env.DB_PASSWORD }} 
 
     - name: Set up Go
       uses: actions/setup-go@v4
