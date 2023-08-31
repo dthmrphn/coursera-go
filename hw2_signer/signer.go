@@ -94,8 +94,8 @@ func ExecutePipeline(jobs ...job) {
 	for i := range jobs {
 		wg.Add(1)
 		go func(i int, j job, in, out chan interface{}) {
+			defer wg.Done()
 			j(in, out)
-			wg.Done()
 			close(out)
 		}(i, jobs[i], chs[i], chs[i+1])
 	}
