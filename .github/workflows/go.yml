@@ -18,6 +18,9 @@ jobs:
       with:
         go-version: '1.21'
 
-    - name: Test hw3
-      run:  go test -v -benchmem -bench . ./hw3_bench
+    - name: Test
+      run: |
+        go test -v ./hw1_tree
+        go test -v ./hw2_signer
+        go test -v -benchmem -bench . ./hw3_bench
 
