@@ -44,3 +44,10 @@ func BenchmarkFast(b *testing.B) {
 		FastSearch(ioutil.Discard)
 	}
 }
+
+func BenchmarkFastEasyJson(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		FastSearchEasyJson(ioutil.Discard)
+	}
+}
+
