@@ -19,5 +19,8 @@ jobs:
         go-version: '1.21'
 
     - name: Test
-      run:  go test -v ./hw1_tree
-      run:  go test -v ./hw2_signer
+      run: |
+        go test -v ./hw1_tree
+        go test -v ./hw2_signer
+        go test -v -benchmem -bench . ./hw3_bench
+
