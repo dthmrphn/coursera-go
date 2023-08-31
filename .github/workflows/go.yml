@@ -23,7 +23,7 @@ jobs:
     - name: Set up Mysql
       run : |
           sudo /etc/init.d/mysql start
-          mysql -h 127.0.0.1 -e 'CREATE DATABASE ${{ env.DB_NAME }};' -u${{ env.DB_USER }} -p${{ env.DB_PASSWORD }}
+          mysql -h 127.0.0.1 -e 'CREATE DATABASE ${{ env.DB_NAME }};' -u ${{ env.DB_USER }} -p ${{ env.DB_PASSWORD }}
 
     - name: Set up Go
       uses: actions/setup-go@v4
