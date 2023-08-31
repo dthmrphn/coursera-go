@@ -10,8 +10,20 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+
+    env:
+      DB_NAME: golang
+      DB_USER: root
+      DB_PASSWORD: 1234
+      DB_DSN: $DB_USER:$DB_PASSWORD@/$DB_NAME
+
     steps:
     - uses: actions/checkout@v3
+
+    - name: Set up Mysql
+      run : |
+          sudo /etc/init.d/mysql start
+          mysql -e 'CREATE DATABASE ${{ env.DB_NAME }};' -u${{ env.DB_USER }} -p${{ env.DB_PASSWORD }}
 
     - name: Set up Go
       uses: actions/setup-go@v4
