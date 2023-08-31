@@ -1,4 +1,4 @@
-module coursera/hw6_db_explorer
+module coursera-go
 
 go 1.21.0
 

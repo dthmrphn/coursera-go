@@ -17,3 +17,6 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.21'
+
+    - name: Test hw6
+      run:  go test -v ./hw6_db_explorer
