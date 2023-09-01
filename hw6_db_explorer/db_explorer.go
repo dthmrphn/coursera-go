@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -63,6 +64,8 @@ func (e *DbExplorer) tablesList(w http.ResponseWriter, r *http.Request) {
 	for t := range e.v.tables {
 		tables = append(tables, t)
 	}
+
+	sort.Strings(tables)
 
 	data := map[string][]string{"tables": tables}
 	writeResponse(w, http.StatusOK, data, "")
