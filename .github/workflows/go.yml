@@ -37,3 +37,5 @@ jobs:
         go test -v ./hw2_signer
         go test -v -benchmem -bench . ./hw3_bench
         go test -v ./hw6_db_explorer
+        go test -v ./hw8_i2s
+
