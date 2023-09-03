@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -98,7 +98,7 @@ func (srv *SearchClient) FindUsers(req SearchRequest) (*SearchResponse, error) {
 		return nil, fmt.Errorf("unknown error %s", err)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 
 	switch resp.StatusCode {
 	case http.StatusUnauthorized:
@@ -112,7 +112,7 @@ func (srv *SearchClient) FindUsers(req SearchRequest) (*SearchResponse, error) {
 			return nil, fmt.Errorf("cant unpack error json: %s", err)
 		}
 		if errResp.Error == "ErrorBadOrderField" {
-			return nil, fmt.Errorf("OrderFeld %s invalid", req.OrderField)
+			return nil, fmt.Errorf("OrderField %s invalid", req.OrderField)
 		}
 		return nil, fmt.Errorf("unknown bad request error: %s", errResp.Error)
 	}
