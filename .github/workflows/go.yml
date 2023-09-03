@@ -10,14 +10,31 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+
+    env:
+      DB_NAME: golang
+      DB_USER: root
+      DB_PASSWORD: root
+      
     steps:
     - uses: actions/checkout@v3
+
+    - name: Set up Mysql
+      run : |
+          sudo /etc/init.d/mysql start
+          sudo mysql -h 127.0.0.1 -e 'CREATE DATABASE ${{ env.DB_NAME }};' -u ${{ env.DB_USER }} -p${{ env.DB_PASSWORD }}
 
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: '1.21'
 
-    - name: Test hw4
-      run:  go test -v -cover ./hw4_test_coverage
-
+    - name: Test
+      env:
+        DB_DSN: ${{ env.DB_USER }}:${{ env.DB_PASSWORD }}@/${{ env.DB_NAME }}
+      run: |
+        go test -v ./hw1_tree
+        go test -v ./hw2_signer
+        go test -v -benchmem -bench . ./hw3_bench
+        go test -v -cover ./hw4_test_coverage
+        go test -v ./hw6_db_explorer

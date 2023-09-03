@@ -3,12 +3,13 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -85,8 +86,17 @@ func CleanupTestApis(db *sql.DB) {
 	}
 }
 
+func getDSN() string {
+    dsn := os.Getenv("DB_DSN")
+    if dsn == "" {
+	    return DSN
+    }
+
+    return dsn
+}
+
 func TestApis(t *testing.T) {
-	db, err := sql.Open("mysql", DSN)
+	db, err := sql.Open("mysql", getDSN())
 	err = db.Ping()
 	if err != nil {
 		panic(err)
@@ -535,7 +545,7 @@ func runCases(t *testing.T, ts *httptest.Server, db *sql.DB, cases []Case) {
 			continue
 		}
 		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 
 		// fmt.Printf("[%s] body: %s\n", caseName, string(body))
 		if item.Status == 0 {
